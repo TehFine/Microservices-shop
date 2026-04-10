@@ -4,18 +4,19 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const swaggerUi = require("swagger-ui-express");
-require("dotenv").config();
-
+const swaggerSpec = require("./swagger/swagger");
 const orderRoutes = require("./routes/orderRoutes");
+const errorHandler = require("./middleware/errorHandler");
+require("dotenv").config();
 
 const app = express();
 
 // Kết nối MongoDB
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => console.log("✅ Kết nối MongoDB thành công"))
+  .then(() => console.log("✅ Ket noi MongoDB thanh cong"))
   .catch((err) => {
-    console.error("❌ Kết nối MongoDB thất bại:", err.message);
+    console.error("❌ Ket noi MongoDB that bai:", err.message);
     process.exit(1);
   });
 
@@ -24,37 +25,39 @@ app.use(cors());
 app.use(morgan("dev"));
 app.use(express.json());
 
-// Swagger
-const swaggerJsdoc = require("swagger-jsdoc");
-const swaggerSpec = swaggerJsdoc({
-  definition: {
-    openapi: "3.0.0",
-    info: { title: "Order Service API", version: "1.0.0" },
-    servers: [{ url: "http://localhost:3002" }],
-  },
-  apis: ["./src/routes/*.js"],
-});
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// Swagger UI
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: "Order Service API Docs",
+}));
 
+// Health check
 app.get("/health", (req, res) =>
-  res.json({ status: "ok", service: "order-service", db: mongoose.connection.readyState === 1 ? "connected" : "disconnected" })
+  res.json({
+    status: "ok",
+    service: process.env.SERVICE_NAME,
+    db: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  })
 );
 
+app.get("/", (req, res) =>
+  res.json({
+    service: "Order Service",
+    docs: "http://localhost:3002/api-docs",
+    health: "http://localhost:3002/health",
+  })
+);
+
+// Routes
 app.use("/api/orders", orderRoutes);
 
-// Error handler MongoDB
-app.use((err, req, res, next) => {
-  if (err.name === "ValidationError") {
-    return res.status(422).json({
-      success: false,
-      message: "Dữ liệu không hợp lệ",
-      errors: Object.values(err.errors).map((e) => ({ field: e.path, message: e.message })),
-    });
-  }
-  if (err.code === 11000) {
-    return res.status(409).json({ success: false, message: "Dữ liệu đã tồn tại" });
-  }
-  res.status(500).json({ success: false, message: err.message });
+// 404
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Route khong ton tai" });
 });
+
+// Error handler — PHẢI ĐẶT CUỐI
+app.use(errorHandler);
 
 module.exports = app;

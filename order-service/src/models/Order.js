@@ -22,18 +22,22 @@ const ShippingAddressSchema = new mongoose.Schema(
 
 const OrderSchema = new mongoose.Schema(
   {
-    orderCode: { type: String, unique: true },
+    orderCode: { type: String, unique: true }, // unique: true đã tạo index rồi
     customerId: { type: Number, required: true },
     customerName: { type: String, required: true },
     customerEmail: {
       type: String,
       required: true,
-      match: [/^\S+@\S+\.\S+$/, "Email không hợp lệ"],
+      match: [/^\S+@\S+\.\S+$/, "Email khong hop le"],
     },
-    items: { type: [OrderItemSchema], required: true, validate: {
-      validator: (v) => v.length > 0,
-      message: "Đơn hàng phải có ít nhất 1 sản phẩm",
-    }},
+    items: {
+      type: [OrderItemSchema],
+      required: true,
+      validate: {
+        validator: (v) => v.length > 0,
+        message: "Don hang phai co it nhat 1 san pham",
+      },
+    },
     totalAmount: { type: Number, required: true, min: 0 },
     status: {
       type: String,
@@ -49,23 +53,22 @@ const OrderSchema = new mongoose.Schema(
   }
 );
 
-// Middleware: tự sinh orderCode
+// Middleware tự sinh orderCode
 OrderSchema.pre("save", async function (next) {
   if (!this.orderCode) {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const count = await mongoose.model("Order").countDocuments();
     this.orderCode = `ORD-${date}-${String(count + 1).padStart(4, "0")}`;
   }
-  next();
 });
 
-// Virtual: tổng số lượng sản phẩm
+// Virtual
 OrderSchema.virtual("totalItems").get(function () {
   return this.items.reduce((sum, item) => sum + item.quantity, 0);
 });
 
+// Chỉ giữ 2 index này — BỎ orderCode vì unique: true đã tạo rồi
 OrderSchema.index({ customerId: 1, createdAt: -1 });
 OrderSchema.index({ status: 1 });
-OrderSchema.index({ orderCode: 1 });
 
 module.exports = mongoose.model("Order", OrderSchema);

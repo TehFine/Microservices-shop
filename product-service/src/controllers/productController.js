@@ -134,15 +134,14 @@ const updateProduct = async (req, res, next) => {
   }
 };
 
-// DELETE /api/products/:id — Soft delete
+// DELETE /api/products/:id — Hard delete
 const deleteProduct = async (req, res, next) => {
   try {
-    await prisma.product.update({
+    await prisma.product.delete({
       where: { id: parseInt(req.params.id) },
-      data: { isActive: false },
     });
 
-    res.json({ success: true, message: "Đã ẩn sản phẩm thành công" });
+    res.json({ success: true, message: "Đã xóa sản phẩm thành công" });
   } catch (error) {
     next(error);
   }
