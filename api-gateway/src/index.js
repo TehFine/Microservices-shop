@@ -8,26 +8,29 @@ require("dotenv").config();
 
 const app = express();
 
-// Bắt buộc cho Render
 app.set("trust proxy", 1);
 
-app.use(helmet());
-app.use(cors({
-  origin: "*",
-  credentials: true,
-}));
+// KHÔNG dùng express.json() ở đây
+// Gateway chỉ forward request, không parse body
+app.use(cors({ origin: "*", credentials: true }));
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Tắt để tránh chặn proxy
+  })
+);
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: { success: false, message: "Qua nhieu request" },
   standardHeaders: true,
   legacyHeaders: false,
+  message: { success: false, message: "Qua nhieu request" },
 });
 app.use(limiter);
 
-// Health check
+// ─── Health check ────────────────────────────
 app.get("/health", (req, res) =>
   res.json({
     status: "ok",
@@ -41,33 +44,43 @@ app.get("/health", (req, res) =>
   })
 );
 
-// Proxy helper — thêm on.proxyReq để debug
-const createProxy = (target, pathRewrite = {}) =>
+// ─── Proxy helper ────────────────────────────
+const createProxy = (target) =>
   createProxyMiddleware({
     target,
     changeOrigin: true,
-    pathRewrite,
+    // Giữ nguyên path, không rewrite
     on: {
       proxyReq: (proxyReq, req) => {
         console.log(`[PROXY] ${req.method} ${req.path} → ${target}${req.path}`);
       },
       error: (err, req, res) => {
         console.error(`[PROXY ERROR] ${err.message}`);
-        res.status(503).json({
-          success: false,
-          message: "Service tam thoi khong kha dung",
-          error: err.message,
-        });
+        res
+          .status(503)
+          .json({ success: false, message: "Service khong kha dung" });
       },
     },
   });
 
-// Routes
+// ─── Auth middleware chỉ dùng cho orders ─────
+// Không dùng express.json() nhưng authenticate cần đọc header
+// nên vẫn hoạt động bình thường
+
+// ─── Routes (thứ tự QUAN TRỌNG) ──────────────
+// Đặt proxy TRƯỚC 404 handler
 app.use("/api/auth", createProxy(process.env.AUTH_SERVICE_URL));
 app.use("/api/products", createProxy(process.env.PRODUCT_SERVICE_URL));
-app.use("/api/orders", authenticate, createProxy(process.env.ORDER_SERVICE_URL));
+app.use(
+  "/api/orders",
+  (req, res, next) => {
+    // Parse header để authenticate mà không cần express.json()
+    authenticate(req, res, next);
+  },
+  createProxy(process.env.ORDER_SERVICE_URL)
+);
 
-// 404
+// ─── 404 — ĐẶT CUỐI CÙNG ─────────────────────
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route khong ton tai" });
 });
@@ -75,7 +88,7 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🌐 API Gateway: http://localhost:${PORT}`);
+  console.log(`   Auth     → ${process.env.AUTH_SERVICE_URL}`);
   console.log(`   Products → ${process.env.PRODUCT_SERVICE_URL}`);
   console.log(`   Orders   → ${process.env.ORDER_SERVICE_URL}`);
-  console.log(`   Auth     → ${process.env.AUTH_SERVICE_URL}`);
 });
