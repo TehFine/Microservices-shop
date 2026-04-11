@@ -36,15 +36,16 @@ app.get("/health", (req, res) =>
 );
 
 // ─── Auth routes ─────────────────────────────
+// pathRewrite: "" → /api/auth/register (giữ nguyên toàn bộ)
 app.use(
   "/api/auth",
   createProxyMiddleware({
     target: process.env.AUTH_SERVICE_URL,
     changeOrigin: true,
-    pathRewrite: { "^/api/auth": "/api/auth" },
+    pathRewrite: (path, req) => `/api/auth${path}`,
     on: {
       proxyReq: (proxyReq, req) => {
-        console.log(`[AUTH] ${req.method} ${req.originalUrl}`);
+        console.log(`[AUTH] ${req.method} /api/auth${req.path} → ${process.env.AUTH_SERVICE_URL}/api/auth${req.path}`);
       },
       error: (err, req, res) => {
         console.error(`[AUTH ERROR] ${err.message}`);
@@ -60,10 +61,10 @@ app.use(
   createProxyMiddleware({
     target: process.env.PRODUCT_SERVICE_URL,
     changeOrigin: true,
-    pathRewrite: { "^/api/products": "/api/products" },
+    pathRewrite: (path, req) => `/api/products${path}`,
     on: {
       proxyReq: (proxyReq, req) => {
-        console.log(`[PRODUCT] ${req.method} ${req.originalUrl}`);
+        console.log(`[PRODUCT] ${req.method} /api/products${req.path}`);
       },
       error: (err, req, res) => {
         console.error(`[PRODUCT ERROR] ${err.message}`);
@@ -80,10 +81,10 @@ app.use(
   createProxyMiddleware({
     target: process.env.ORDER_SERVICE_URL,
     changeOrigin: true,
-    pathRewrite: { "^/api/orders": "/api/orders" },
+    pathRewrite: (path, req) => `/api/orders${path}`,
     on: {
       proxyReq: (proxyReq, req) => {
-        console.log(`[ORDER] ${req.method} ${req.originalUrl}`);
+        console.log(`[ORDER] ${req.method} /api/orders${req.path}`);
       },
       error: (err, req, res) => {
         console.error(`[ORDER ERROR] ${err.message}`);
