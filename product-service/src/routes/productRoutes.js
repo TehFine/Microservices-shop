@@ -5,8 +5,11 @@ const {
   createProduct,
   updateProduct,
   deleteProduct,
+  uploadProductImage,
+  deleteProductImage,
 } = require("../controllers/productController");
 const { productValidation } = require("../middleware/validate");
+const { upload } = require("../config/cloudinary");
 
 /**
  * @swagger
@@ -161,5 +164,74 @@ router.put("/:id", updateProduct);
  *         description: Ẩn thành công
  */
 router.delete("/:id", deleteProduct);
+
+
+
+// Middleware xử lý lỗi upload
+const handleUploadError = (err, req, res, next) => {
+  if (err.message === "Chi chap nhan file anh JPG, PNG, WEBP") {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({
+      success: false,
+      message: "File qua lon, toi da 5MB",
+    });
+  }
+  next(err);
+};
+
+/**
+ * @swagger
+ * /api/products/{id}/image:
+ *   post:
+ *     summary: Upload anh san pham
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Upload thanh cong
+ *       400:
+ *         description: File khong hop le
+ *       404:
+ *         description: Khong tim thay san pham
+ */
+router.post(
+  "/:id/image",
+  upload.single("image"),
+  handleUploadError,
+  uploadProductImage
+);
+
+/**
+ * @swagger
+ * /api/products/{id}/image:
+ *   delete:
+ *     summary: Xoa anh san pham
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Xoa thanh cong
+ */
+router.delete("/:id/image", deleteProductImage);
 
 module.exports = router;

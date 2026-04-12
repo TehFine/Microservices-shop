@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const { cloudinary } = require("../config/cloudinary");
 
 // Hàm tạo slug từ tên
 const generateSlug = (name) =>
@@ -147,10 +148,116 @@ const deleteProduct = async (req, res, next) => {
   }
 };
 
+
+
+
+// POST /api/products/:id/image
+const uploadProductImage = async (req, res, next) => {
+  try {
+    // Kiểm tra có file không
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui long chon file anh",
+      });
+    }
+
+    // Kiểm tra sản phẩm tồn tại
+    const product = await prisma.product.findUnique({
+      where: { id: parseInt(req.params.id) },
+    });
+
+    if (!product) {
+      // Xoá ảnh vừa upload nếu product không tồn tại
+      await cloudinary.uploader.destroy(req.file.filename);
+      return res.status(404).json({
+        success: false,
+        message: "Khong tim thay san pham",
+      });
+    }
+
+    // Xoá ảnh cũ trên Cloudinary nếu có
+    if (product.imageUrl) {
+      try {
+        // Lấy public_id từ URL cũ
+        const urlParts = product.imageUrl.split("/");
+        const fileName = urlParts[urlParts.length - 1];
+        const publicId = `microservices-shop/products/${fileName.split(".")[0]}`;
+        await cloudinary.uploader.destroy(publicId);
+      } catch (err) {
+        console.log("Khong the xoa anh cu:", err.message);
+      }
+    }
+
+    // Cập nhật imageUrl mới vào database
+    const updatedProduct = await prisma.product.update({
+      where: { id: parseInt(req.params.id) },
+      data: { imageUrl: req.file.path },
+      include: { category: true },
+    });
+
+    res.json({
+      success: true,
+      message: "Upload anh thanh cong",
+      data: {
+        product: updatedProduct,
+        imageUrl: req.file.path,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// DELETE /api/products/:id/image
+const deleteProductImage = async (req, res, next) => {
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id: parseInt(req.params.id) },
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Khong tim thay san pham",
+      });
+    }
+
+    if (!product.imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "San pham chua co anh",
+      });
+    }
+
+    // Xoá trên Cloudinary
+    const urlParts = product.imageUrl.split("/");
+    const fileName = urlParts[urlParts.length - 1];
+    const publicId = `microservices-shop/products/${fileName.split(".")[0]}`;
+    await cloudinary.uploader.destroy(publicId);
+
+    // Xoá URL trong database
+    const updatedProduct = await prisma.product.update({
+      where: { id: parseInt(req.params.id) },
+      data: { imageUrl: null },
+    });
+
+    res.json({
+      success: true,
+      message: "Xoa anh thanh cong",
+      data: updatedProduct,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProducts,
   getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
+  uploadProductImage,
+  deleteProductImage,
 };
