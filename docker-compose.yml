@@ -4,11 +4,29 @@ networks:
   microservices-net:
     driver: bridge
 
-services:
-  # Không cần postgres và mongo container
-  # vì dùng Supabase cloud và MongoDB Atlas
+volumes:
+  mongo_data:
+  redis_data:
 
-  # ─── Product Service ────────────────────────
+services:
+  # ─── Redis ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  # ─── Product Service ──────────────────────────
   product-service:
     build:
       context: ./product-service
@@ -19,13 +37,20 @@ services:
       PORT: 3001
       SERVICE_NAME: product-service
       DATABASE_URL: ${PRODUCT_DATABASE_URL}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      REDIS_URL: redis://redis:6379
     ports:
       - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - microservices-net
     restart: unless-stopped
 
-  # ─── Auth Service ───────────────────────────
+  # ─── Auth Service ─────────────────────────────
   auth-service:
     build:
       context: ./auth-service
@@ -45,7 +70,7 @@ services:
       - microservices-net
     restart: unless-stopped
 
-  # ─── Order Service ──────────────────────────
+  # ─── Order Service ────────────────────────────
   order-service:
     build:
       context: ./order-service
@@ -63,7 +88,7 @@ services:
       - microservices-net
     restart: unless-stopped
 
-  # ─── API Gateway ────────────────────────────
+  # ─── API Gateway ──────────────────────────────
   api-gateway:
     build:
       context: ./api-gateway

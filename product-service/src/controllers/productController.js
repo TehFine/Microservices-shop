@@ -1,28 +1,32 @@
 const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
 const { cloudinary } = require("../config/cloudinary");
+const { cacheGet, cacheSet, cacheDelPattern } = require("../config/redis");
 
-// Hàm tạo slug từ tên
+const prisma = new PrismaClient();
+
 const generateSlug = (name) =>
-  name
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
+  name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
-// GET /api/products — Danh sách có filter, phân trang, sắp xếp
+// GET /api/products — Có cache
 const getProducts = async (req, res, next) => {
   try {
     const {
-      page = 1,
-      limit = 10,
-      search = "",
-      category,
-      sortBy = "createdAt",
-      order = "desc",
-      minPrice,
-      maxPrice,
-      inStock,
+      page = 1, limit = 10,
+      search = "", category,
+      sortBy = "createdAt", order = "desc",
+      minPrice, maxPrice, inStock,
     } = req.query;
+
+    // Tạo cache key từ query params
+    const cacheKey = `products:${JSON.stringify(req.query)}`;
+
+    // Kiểm tra cache trước
+    const cached = await cacheGet(cacheKey);
+    if (cached) {
+      console.log(`Cache HIT: ${cacheKey}`);
+      return res.json({ ...cached, cached: true });
+    }
+    console.log(`Cache MISS: ${cacheKey}`);
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -50,7 +54,7 @@ const getProducts = async (req, res, next) => {
       prisma.product.count({ where }),
     ]);
 
-    res.json({
+    const response = {
       success: true,
       data: products,
       pagination: {
@@ -59,33 +63,50 @@ const getProducts = async (req, res, next) => {
         limit: parseInt(limit),
         totalPages: Math.ceil(total / parseInt(limit)),
       },
-    });
+    };
+
+    // Lưu vào cache 5 phút
+    await cacheSet(cacheKey, response);
+
+    res.json(response);
   } catch (error) {
     next(error);
   }
 };
 
-// GET /api/products/:id
+// GET /api/products/:id — Có cache
 const getProductById = async (req, res, next) => {
   try {
+    const cacheKey = `product:${req.params.id}`;
+
+    const cached = await cacheGet(cacheKey);
+    if (cached) {
+      console.log(`Cache HIT: ${cacheKey}`);
+      return res.json({ ...cached, cached: true });
+    }
+
     const product = await prisma.product.findUnique({
       where: { id: parseInt(req.params.id) },
       include: { category: true },
     });
 
     if (!product) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Không tìm thấy sản phẩm" });
+      return res.status(404).json({
+        success: false,
+        message: "Khong tim thay san pham",
+      });
     }
 
-    res.json({ success: true, data: product });
+    const response = { success: true, data: product };
+    await cacheSet(cacheKey, response);
+
+    res.json(response);
   } catch (error) {
     next(error);
   }
 };
 
-// POST /api/products
+// POST /api/products — Xoa cache
 const createProduct = async (req, res, next) => {
   try {
     const { name, price, description, stock, imageUrl, categoryId } = req.body;
@@ -96,23 +117,25 @@ const createProduct = async (req, res, next) => {
       include: { category: true },
     });
 
+    // Xoa tat ca cache products
+    await cacheDelPattern("products:*");
+    console.log("Cache: Xoa sau khi tao san pham moi");
+
     res.status(201).json({
       success: true,
       data: product,
-      message: "Tạo sản phẩm thành công",
+      message: "Tao san pham thanh cong",
     });
   } catch (error) {
     next(error);
   }
 };
 
-// PUT /api/products/:id
+// PUT /api/products/:id — Xoa cache
 const updateProduct = async (req, res, next) => {
   try {
-    const { name, price, description, stock, imageUrl, categoryId, isActive } =
-      req.body;
+    const { name, price, description, stock, imageUrl, categoryId, isActive } = req.body;
 
-    // Nếu có đổi tên thì cập nhật slug
     const updateData = {
       ...(name && { name, slug: generateSlug(name) }),
       ...(price !== undefined && { price }),
@@ -129,32 +152,37 @@ const updateProduct = async (req, res, next) => {
       include: { category: true },
     });
 
-    res.json({ success: true, data: product, message: "Cập nhật thành công" });
+    // Xoa cache sản phẩm này và danh sách
+    await cacheDelPattern("products:*");
+    await cacheDelPattern(`product:${req.params.id}`);
+
+    res.json({ success: true, data: product, message: "Cap nhat thanh cong" });
   } catch (error) {
     next(error);
   }
 };
 
-// DELETE /api/products/:id — Hard delete
+// DELETE /api/products/:id — Xoa cache
 const deleteProduct = async (req, res, next) => {
   try {
-    await prisma.product.delete({
+    await prisma.product.update({
       where: { id: parseInt(req.params.id) },
+      data: { isActive: false },
     });
 
-    res.json({ success: true, message: "Đã xóa sản phẩm thành công" });
+    // Xoa cache
+    await cacheDelPattern("products:*");
+    await cacheDelPattern(`product:${req.params.id}`);
+
+    res.json({ success: true, message: "Da an san pham thanh cong" });
   } catch (error) {
     next(error);
   }
 };
 
-
-
-
-// POST /api/products/:id/image
+// POST /api/products/:id/image — Xoa cache
 const uploadProductImage = async (req, res, next) => {
   try {
-    // Kiểm tra có file không
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -162,13 +190,11 @@ const uploadProductImage = async (req, res, next) => {
       });
     }
 
-    // Kiểm tra sản phẩm tồn tại
     const product = await prisma.product.findUnique({
       where: { id: parseInt(req.params.id) },
     });
 
     if (!product) {
-      // Xoá ảnh vừa upload nếu product không tồn tại
       await cloudinary.uploader.destroy(req.file.filename);
       return res.status(404).json({
         success: false,
@@ -176,10 +202,8 @@ const uploadProductImage = async (req, res, next) => {
       });
     }
 
-    // Xoá ảnh cũ trên Cloudinary nếu có
     if (product.imageUrl) {
       try {
-        // Lấy public_id từ URL cũ
         const urlParts = product.imageUrl.split("/");
         const fileName = urlParts[urlParts.length - 1];
         const publicId = `microservices-shop/products/${fileName.split(".")[0]}`;
@@ -189,12 +213,15 @@ const uploadProductImage = async (req, res, next) => {
       }
     }
 
-    // Cập nhật imageUrl mới vào database
     const updatedProduct = await prisma.product.update({
       where: { id: parseInt(req.params.id) },
       data: { imageUrl: req.file.path },
       include: { category: true },
     });
+
+    // Xoa cache
+    await cacheDelPattern("products:*");
+    await cacheDelPattern(`product:${req.params.id}`);
 
     res.json({
       success: true,
@@ -209,7 +236,6 @@ const uploadProductImage = async (req, res, next) => {
   }
 };
 
-// DELETE /api/products/:id/image
 const deleteProductImage = async (req, res, next) => {
   try {
     const product = await prisma.product.findUnique({
@@ -230,17 +256,18 @@ const deleteProductImage = async (req, res, next) => {
       });
     }
 
-    // Xoá trên Cloudinary
     const urlParts = product.imageUrl.split("/");
     const fileName = urlParts[urlParts.length - 1];
     const publicId = `microservices-shop/products/${fileName.split(".")[0]}`;
     await cloudinary.uploader.destroy(publicId);
 
-    // Xoá URL trong database
     const updatedProduct = await prisma.product.update({
       where: { id: parseInt(req.params.id) },
       data: { imageUrl: null },
     });
+
+    await cacheDelPattern("products:*");
+    await cacheDelPattern(`product:${req.params.id}`);
 
     res.json({
       success: true,
