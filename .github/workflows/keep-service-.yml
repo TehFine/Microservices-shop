@@ -2,7 +2,7 @@ name: Keep Render Services Alive
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,11 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Ping API Gateway
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-gateway-64tu.onrender.com/api/products?limit=1)
-          echo "API Gateway: $STATUS"
-
+      
       - name: Ping Product Service
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://product-service-vwo6.onrender.com/api/products?limit=1)
@@ -23,13 +19,18 @@ jobs:
 
       - name: Ping Auth Service
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://auth-service-1zng.onrender.com/api/auth/me)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://auth-service-1zng.onrender.com/health)
           echo "Auth Service: $STATUS"
 
       - name: Ping Order Service
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://order-service-qj7r.onrender.com/api/orders?limit=1)
           echo "Order Service: $STATUS"
+
+      - name: Ping API Gateway
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-gateway-64tu.onrender.com/api/products?limit=1)
+          echo "API Gateway: $STATUS"
 
       - name: Summary
         run: |
