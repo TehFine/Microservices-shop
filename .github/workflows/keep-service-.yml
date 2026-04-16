@@ -2,9 +2,7 @@ name: Keep Render Services Alive
 
 on:
   schedule:
-    # Chạy mỗi 10 phút
     - cron: '*/5 * * * *'
-  # Cho phép chạy thủ công từ GitHub Actions tab
   workflow_dispatch:
 
 jobs:
@@ -15,68 +13,23 @@ jobs:
     steps:
       - name: Ping API Gateway
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-gateway-64tu.onrender.com//api/products?limit=1)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-gateway-64tu.onrender.com/api/products?limit=1)
           echo "API Gateway: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "::warning::API Gateway returned $STATUS"
-          fi
 
       - name: Ping Product Service
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://product-service-vwo6.onrender.com//api/products?limit=1)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://product-service-vwo6.onrender.com/api/products?limit=1)
           echo "Product Service: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "::warning::Product Service returned $STATUS"
-          fi
 
       - name: Ping Auth Service
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://auth-service-1zng.onrender.com/api/auth/mename: Keep Render Services Alive
-
-on:
-  schedule:
-    # Chạy mỗi 10 phút
-    - cron: '*/5 * * * *'￼→ Runs every 5 minutes
-  # Cho phép chạy thủ công từ GitHub Actions tab
-  workflow_dispatch:
-
-jobs:
-  ping:
-    name: Ping All Services
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Ping API Gateway
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-gateway-64tu.onrender.com//api/products?limit=1)
-          echo "API Gateway: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "::warning::API Gateway returned $STATUS"
-          fi
-
-      - name: Ping Product Service
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://product-service-vwo6.onrender.com//api/products?limit=1)
-          echo "Product Service: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "::warning::Product Service returned $STATUS"
-          fi
-
-      - name: Ping Auth Service
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://auth-service-1zng.onrender.com/api/auth/me?limit=1)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://auth-service-1zng.onrender.com/api/auth/me)
           echo "Auth Service: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "::warning::Auth Service returned $STATUS"
-          fi
 
       - name: Ping Order Service
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://order-service-qj7r.onrender.com/api/orders?limit=1)
           echo "Order Service: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "::warning::Order Service returned $STATUS"
-          fi
 
       - name: Summary
         run: |
